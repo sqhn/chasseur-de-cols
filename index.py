@@ -66,7 +66,13 @@ def get_activities(limit=None, details=False):
             return shapely.LineString(lnglat)
         return None
 
-    activities = client.get_activities(limit=limit)
+    iterator = client.get_activities(limit=limit)
+    activities = []
+    with st.empty():
+        for activity in iterator:
+            activities.append(activity)
+            st.text=f"Nous chargeons vos activités... {len(activities)}"
+
     activities = pd.DataFrame([{
             "id": activity.id,
             "name" : activity.name,
@@ -83,6 +89,9 @@ def get_activities(limit=None, details=False):
             "polyline": polyline.decode(activity.map.summary_polyline),
         } for activity in activities])
 
+    activities["start_date"] = pd.to_datetime(activities["start_date"]).dt.date
+    activities["start_year"] = pd.to_datetime(activities["start_date"]).dt.year
+
     if details:
         activities["polyline"] = activities.id.apply(get_polyline)
 
@@ -97,9 +106,16 @@ def get_activities(limit=None, details=False):
     return activities
 
 def match_cols(cols, activities):
+    placeholder = st.empty()
+    progress_text = "Nous cherchons les cols..."
+    with placeholder.container():
+        progress_bar = st.progress(0, text=progress_text)
+
     dist_max = 0.001
     cols_matched = geopandas.GeoDataFrame()
     activities_buffer = activities.buffer(dist_max)
+
+    i = 0
     for activity_id, geometry in activities_buffer.items():
         if geometry:
             df = cols[["nom", "geometry"]].copy()
@@ -107,7 +123,11 @@ def match_cols(cols, activities):
             df["activity_id"] = activity_id
             df = df[df.dist <= dist_max]
             cols_matched = pd.concat([cols_matched, df])
+        i += 1
+        progress_bar.progress(i / len(activities_buffer), text=progress_text)
     cols_matched["latlng"] = cols_matched.geometry.apply(lambda point: [point.xy[1][0], point.xy[0][0]])
+    cols_matched = cols_matched.merge(activities.reset_index()[["activity_id", "start_date", "start_year"]], on="activity_id")
+    placeholder.empty()
     return cols_matched
 
 st.write("""
@@ -117,23 +137,29 @@ Grâce à vos données Strava, Chasseur de cols identifie tous les cols où vous
 """)
 
 cols = get_cols(True)
-activities = get_activities(limit=10)
-
-cols_matched = match_cols(cols, activities)
-
-
+activities = get_activities()
 st.write(f"Nous avons trouvé {activities.shape[0]} activitiés")
-st.write(f"Vous avez passé {len(cols_matched)} cols !")
 
+if "cols_matched" not in st.session_state:
+    st.session_state["cols_matched"] = match_cols(cols, activities)
+
+cols_matched = st.session_state["cols_matched"]
+
+st.write(f"Vous avez passé {len(cols_matched)} cols !")
+st.bar_chart(data=cols_matched.groupby("start_year").size(), height=250)
 
 displayed_cols = cols_matched.reset_index() \
     .groupby("index") \
-    .agg({"nom": "size", "activity_id": list}) \
-    .rename(columns={"nom": "Nombre de fois"}) \
+    .agg({"nom": "size", "activity_id": list, "start_date": "min"}) \
+    .rename(columns={"nom": "Passages", "start_date": "1ère fois"}) \
     .join(cols) \
-    [["nom", "Nombre de fois", "altitude", "departement", "liencols", "activity_id"]]
+    .rename(columns={"nom": "Col", "altitude": "Alt.", "departement": "Dpt.", "liencols": "Lien"}) \
+    [["Col", "Dpt.", "Alt.", "Passages", "1ère fois", "Lien"]]
 
-st.dataframe(displayed_cols, hide_index=True)
+st.dataframe(displayed_cols, hide_index=True, column_config={
+    "Lien": st.column_config.LinkColumn(),
+    "1ère fois": st.column_config.DateColumn(),
+})
 
 
 bounds = activities.total_bounds

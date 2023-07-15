@@ -11,6 +11,7 @@ folium = "*"
 shapely = "*"
 stravalib = "*"
 streamlit-folium = "*"
+polyline = "*"
 
 [dev-packages]
 
