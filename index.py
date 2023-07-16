@@ -48,7 +48,7 @@ client.access_token = strava_token["access_token"]
 client.refresh_token = strava_token["refresh_token"]
 client.token_expires_at = strava_token["expires_at"]
 
-@st.cache_data
+# @st.cache_data
 def get_cols(cyclist_only=False):
     cols = pd.read_csv("cols.csv")
     cols = geopandas.GeoDataFrame(
@@ -56,6 +56,8 @@ def get_cols(cyclist_only=False):
         geometry=geopandas.points_from_xy(cols.lng, cols.lat)
     )
 
+    cols["latlng"] = cols.apply(lambda r: [r["lat"], r["lng"]], axis=1)
+    
     if cyclist_only:
         cols = cols[cols.est_cycliste]
 
@@ -72,7 +74,7 @@ def get_activities(limit=None, details=False):
     def get_linestring(polyline):
         if len(polyline)>=2:
             lnglat = [latlng[::-1] for latlng in polyline]
-            return shapely.LineString(lnglat)
+            return shapely.LineString(lnglat).buffer(0.001)
         return None
 
     activities = []
@@ -102,6 +104,7 @@ def get_activities(limit=None, details=False):
             "polyline": polyline.decode(activity.map.summary_polyline),
         } for activity in activities])
 
+    activities = activities[activities["type"] == "Ride"]
     activities["start_date"] = pd.to_datetime(activities["start_date"]).dt.date
     activities["start_year"] = pd.to_datetime(activities["start_date"]).dt.year
 
@@ -119,31 +122,7 @@ def get_activities(limit=None, details=False):
     return activities
 
 def match_cols(cols, activities):
-    placeholder = st.empty()
-    progress_text = "Nous cherchons les cols..."
-    with placeholder.container():
-        progress_bar = st.progress(0, text=progress_text)
-
-    dist_max = 0.001
-    cols_matched = geopandas.GeoDataFrame()
-    activities_buffer = activities.buffer(dist_max)
-
-    i = 0
-    for activity_id, geometry in activities_buffer.items():
-        if geometry:
-            minx, miny, maxx, maxy = geometry.bounds
-            df = cols.reset_index()[["col_id", "nom", "altitude", "departement", "liencols", "geometry"]].copy()
-            df = df.cx[minx:maxx, miny:maxy]
-            if len(df) > 0:
-                df["dist"] = df.distance(geometry)
-                df["activity_id"] = activity_id
-                df = df[df.dist <= dist_max]
-                cols_matched = pd.concat([cols_matched, df])
-        i += 1
-        progress_bar.progress(i / len(activities_buffer), text=progress_text)
-    cols_matched["latlng"] = cols_matched.geometry.apply(lambda point: [point.xy[1][0], point.xy[0][0]])
-    cols_matched = cols_matched.merge(activities.reset_index()[["activity_id", "start_date", "start_year"]], on="activity_id")
-    placeholder.empty()
+    cols_matched = activities.sjoin(cols.reset_index(), predicate="contains")
     return cols_matched
 
 
@@ -170,9 +149,9 @@ with col2:
 
 st.markdown("# Nombre de cols passés par an")
 
-st.bar_chart(data=cols_matched.groupby("start_year").agg({"activity_id": "size"}).reset_index().rename(columns={"start_year": "Année", "activity_id": "Cols"}), x="Année", y="Cols", height=250)
+st.bar_chart(data=cols_matched.reset_index().groupby("start_year").agg({"activity_id": "size"}).reset_index().rename(columns={"start_year": "Année", "activity_id": "Cols"}), x="Année", y="Cols", height=250)
 
-displayed_cols = cols_matched \
+displayed_cols = cols_matched.reset_index() \
     .groupby("col_id") \
     .agg({"nom": "size", "activity_id": list, "start_date": "min"}) \
     .rename(columns={"nom": "Passages", "start_date": "1ère fois"}) \
@@ -200,9 +179,8 @@ for id, a in activities.iterrows():
     if a.polyline:
         fg.add_child(folium.PolyLine(a.polyline))
     
-df = [[point.xy[1][0], point.xy[0][0]] for point in cols_matched.geometry]
 for id, a in cols_matched.iterrows():
     if a.latlng:
          fg.add_child(folium.Marker(location=a.latlng, tooltip=a.nom))
 
-st_data = streamlit_folium.st_folium(m, feature_group_to_add=fg, width=None)
+st_data = streamlit_folium.st_folium(m, feature_group_to_add=fg, use_container_width=True, returned_objects=[])
