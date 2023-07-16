@@ -89,7 +89,7 @@ def get_activities(limit=None, details=False):
     
 
     activities = pd.DataFrame([{
-            "id": activity.id,
+            "activity_id": activity.id,
             "name" : activity.name,
             "distance" : activity.distance,
             "total_elevation_gain" : activity.total_elevation_gain,
@@ -116,7 +116,6 @@ def get_activities(limit=None, details=False):
         geometry=activities.polyline.apply(get_linestring)
     )
 
-    activities.rename(columns={"id": "activity_id"}, inplace=True)
     activities.set_index("activity_id", inplace=True)
 
     return activities
@@ -168,7 +167,10 @@ st.dataframe(displayed_cols, hide_index=True, column_config={
 with col3:
     st.metric(label="Le plus haut", value=f"{int(displayed_cols['Alt.'].max())}m")
 
-st.markdown("# Carte des cols")
+st.markdown("""
+# Carte des cols
+*Cliquez sur un parcours pour aller le voir sur Strava*
+""")
 
 bounds = activities.total_bounds
 m = folium.Map()
@@ -177,7 +179,7 @@ m.fit_bounds([[bounds[3], bounds[0]],[bounds[1], bounds[2]]])
 fg = folium.FeatureGroup()
 for id, a in activities.iterrows():
     if a.polyline:
-        fg.add_child(folium.PolyLine(a.polyline))
+        fg.add_child(folium.PolyLine(a.polyline, popup=f"[{a.start_date}] <a href='https://www.strava.com/activities/{id}' target='_blank'>{a.name}</a>"))
     
 for id, a in cols_matched.iterrows():
     if a.latlng:
