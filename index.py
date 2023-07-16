@@ -25,7 +25,7 @@ def get_strava_access_token():
 
     if not get_params.get("code"):
         authorized_url = client.authorization_url(client_id=strava["client_id"], redirect_uri=strava["redirect_uri"])
-        st.markdown(f"<a href=\"{authorized_url}\" target=\"_self\"><img src=\"/app/static/btn_strava_connectwith_orange.png\"/></a>", unsafe_allow_html=True)
+        st.markdown(f"<a href=\"{authorized_url}\" target=\"_blank\"><img src=\"/app/static/btn_strava_connectwith_orange.png\"/></a>", unsafe_allow_html=True)
         st.stop()
 
     token = client.exchange_code_for_token(client_id=strava["client_id"], client_secret=strava["client_secret"], code=get_params["code"])

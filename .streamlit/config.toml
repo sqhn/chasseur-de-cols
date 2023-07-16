@@ -1,3 +1,2 @@
 [server]
 enableStaticServing = true
-port = 8501
