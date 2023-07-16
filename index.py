@@ -120,7 +120,9 @@ def match_cols(cols, activities):
     i = 0
     for activity_id, geometry in activities_buffer.items():
         if geometry:
+            minx, miny, maxx, maxy = geometry.bounds
             df = cols.reset_index()[["col_id", "nom", "altitude", "departement", "liencols", "geometry"]].copy()
+            df = df.cx[minx:maxx, miny:maxy]
             df["dist"] = df.distance(geometry)
             df["activity_id"] = activity_id
             df = df[df.dist <= dist_max]
@@ -184,4 +186,4 @@ for id, a in cols_matched.iterrows():
     if a.latlng:
          folium.Marker(location=a.latlng, tooltip=a.nom).add_to(m)
 
-st_data = streamlit_folium.folium_static(m, width=700)
+st_data = streamlit_folium.folium_static(m)
