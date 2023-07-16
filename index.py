@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 
 import polyline
 import folium
@@ -9,9 +10,8 @@ import shapely
 from stravalib.client import Client
 import streamlit_folium
 
+st.image("chasseur_de_cols.png")
 st.write("""
-# Chasseur de cols
-
 Grâce à vos données Strava, Chasseur de cols identifie tous les cols où vous êtes passé. 
 """)
 
@@ -19,19 +19,13 @@ strava = st.secrets["strava"]
 
 client = Client()
 
-    # if "strava_access_token" not in st.session_state:
-
 @st.cache_data(ttl=3600)
 def get_strava_access_token():
     get_params = st.experimental_get_query_params()
 
     if not get_params.get("code"):
         authorized_url = client.authorization_url(client_id=strava["client_id"], redirect_uri=strava["redirect_uri"])
-        st.markdown(f"<a href=\"{authorized_url}\" target=\"_blank\"><button>Se connecter à Strava</button></a>", unsafe_allow_html=True)
-        st.markdown(f"<a href=\"{authorized_url}\" target=\"_self\"><button>Se connecter à Strava</button></a>", unsafe_allow_html=True)
-        st.markdown(f"<a href=\"{authorized_url}\" target=\"_self\">Se connecter à Strava</a>", unsafe_allow_html=True)
-        st.markdown(f"[Se connecter à Strava]({authorized_url})")
-        st.markdown(f"<a href=\"https://www.google.com\" target=\"_self\"><button>Se connecter à Strava</button></a>", unsafe_allow_html=True)
+        st.markdown(f"<a href=\"{authorized_url}\" target=\"_self\"><img src=\"/app/static/btn_strava_connectwith_orange.png\"/></a>", unsafe_allow_html=True)
         st.stop()
 
     token = client.exchange_code_for_token(client_id=strava["client_id"], client_secret=strava["client_secret"], code=get_params["code"])
@@ -54,6 +48,8 @@ def get_cols(cyclist_only=False):
     if cyclist_only:
         cols = cols[cols.est_cycliste]
 
+    cols.index.name = "col_id"
+
     return cols
 
 @st.cache_data
@@ -68,12 +64,16 @@ def get_activities(limit=None, details=False):
             return shapely.LineString(lnglat)
         return None
 
-    iterator = client.get_activities(limit=limit)
     activities = []
-    with st.empty():
-        for activity in iterator:
-            activities.append(activity)
-            st.text=f"Nous chargeons vos activités... {len(activities)}"
+    placeholder = st.empty()
+    iterator = client.get_activities(limit=limit)
+    for activity in iterator:
+        activities.append(activity)
+        with placeholder.container():
+            st.write(f"Nous chargeons vos activités... {len(activities)}")
+    placeholder.empty()
+    time.sleep(1)
+    
 
     activities = pd.DataFrame([{
             "id": activity.id,
@@ -120,8 +120,8 @@ def match_cols(cols, activities):
     i = 0
     for activity_id, geometry in activities_buffer.items():
         if geometry:
-            df = cols[["nom", "geometry"]].copy()
-            df["dist"] = cols.distance(geometry)
+            df = cols.reset_index()[["col_id", "nom", "altitude", "departement", "liencols", "geometry"]].copy()
+            df["dist"] = df.distance(geometry)
             df["activity_id"] = activity_id
             df = df[df.dist <= dist_max]
             cols_matched = pd.concat([cols_matched, df])
@@ -133,34 +133,45 @@ def match_cols(cols, activities):
     return cols_matched
 
 
+col1, col2, col3 = st.columns(3)
+
 cols = get_cols(True)
 activities = get_activities()
-st.write(f"Nous avons trouvé {activities.shape[0]} activitiés")
+
+with col1:
+    st.metric(label="Acitvités strava", value=activities.shape[0])
 
 if "cols_matched" not in st.session_state:
     st.session_state["cols_matched"] = match_cols(cols, activities)
 
 cols_matched = st.session_state["cols_matched"]
 
-st.write(f"Vous avez passé {len(cols_matched)} cols !")
+with col2:
+    st.metric(label="Cols passés", value=cols_matched.col_id.nunique())
+
+st.markdown("# Nombre de cols passés par an")
 st.bar_chart(data=cols_matched.groupby("start_year").size(), height=250)
 
-displayed_cols = cols_matched.reset_index() \
-    .groupby("index") \
+displayed_cols = cols_matched \
+    .groupby("col_id") \
     .agg({"nom": "size", "activity_id": list, "start_date": "min"}) \
     .rename(columns={"nom": "Passages", "start_date": "1ère fois"}) \
-    .join(cols) \
+    .merge(cols[["nom", "altitude", "departement", "liencols"]].reset_index(), on="col_id") \
     .rename(columns={"nom": "Col", "altitude": "Alt.", "departement": "Dpt.", "liencols": "Lien"}) \
     [["Col", "Dpt.", "Alt.", "Passages", "1ère fois", "Lien"]]
 
+st.markdown("# Liste des cols passés")
 st.dataframe(displayed_cols, hide_index=True, column_config={
     "Lien": st.column_config.LinkColumn(),
     "1ère fois": st.column_config.DateColumn(),
 })
 
+with col3:
+    st.metric(label="Le plus haut", value=f"{int(displayed_cols['Alt.'].max())}m")
+
+st.markdown("# Carte des cols")
 
 bounds = activities.total_bounds
-
 m = folium.Map()
 m.fit_bounds([[bounds[3], bounds[0]],[bounds[1], bounds[2]]])
 
@@ -173,4 +184,4 @@ for id, a in cols_matched.iterrows():
     if a.latlng:
          folium.Marker(location=a.latlng, tooltip=a.nom).add_to(m)
 
-st_data = streamlit_folium.st_folium(m, width=700)
+st_data = streamlit_folium.folium_static(m, width=700)
