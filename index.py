@@ -19,7 +19,7 @@ strava = st.secrets["strava"]
 
 client = Client()
 
-@st.cache_data(ttl=3600)
+# @st.cache_data(ttl=3600)
 def get_strava_access_token():
     get_params = st.experimental_get_query_params()
 
@@ -52,7 +52,7 @@ def get_cols(cyclist_only=False):
 
     return cols
 
-@st.cache_data
+# @st.cache_data
 def get_activities(limit=None, details=False):
     def get_polyline(id):
         activity = client.get_activity(id)
