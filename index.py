@@ -1,21 +1,19 @@
 import streamlit as st
 import pandas as pd
 
-# import requests
 import polyline
 import folium
 import geopandas
 import shapely
 
-# from bs4 import BeautifulSoup
 from stravalib.client import Client
 import streamlit_folium
 
-# strava = {
-    # "redirect_uri": "http://localhost:8501/",
-    # "client_id": 110595,
-    # "client_secret": "69f13c7874897da2283b2d9b52288f095e0f1f9e",
-# }
+st.write("""
+# Chasseur de cols
+
+Grâce à vos données Strava, Chasseur de cols identifie tous les cols où vous êtes passé. 
+""")
 
 strava = st.secrets["strava"]
 
@@ -30,6 +28,10 @@ def get_strava_access_token():
     if not get_params.get("code"):
         authorized_url = client.authorization_url(client_id=strava["client_id"], redirect_uri=strava["redirect_uri"])
         st.markdown(f"<a href=\"{authorized_url}\" target=\"_blank\"><button>Se connecter à Strava</button></a>", unsafe_allow_html=True)
+        st.markdown(f"<a href=\"{authorized_url}\" target=\"_self\"><button>Se connecter à Strava</button></a>", unsafe_allow_html=True)
+        st.markdown(f"<a href=\"{authorized_url}\" target=\"_blank\">Se connecter à Strava</a>", unsafe_allow_html=True)
+        st.markdown(f"[Se connecter à Strava]({authorized_url})")
+        st.markdown(f"<a href=\"https://www.google.com\" target=\"_blank\"><button>Se connecter à Strava</button></a>", unsafe_allow_html=True)
         st.stop()
 
     token = client.exchange_code_for_token(client_id=strava["client_id"], client_secret=strava["client_secret"], code=get_params["code"])
@@ -130,11 +132,6 @@ def match_cols(cols, activities):
     placeholder.empty()
     return cols_matched
 
-st.write("""
-# Chasseur de cols
-
-Grâce à vos données Strava, Chasseur de cols identifie tous les cols où vous êtes passé. 
-""")
 
 cols = get_cols(True)
 activities = get_activities()
