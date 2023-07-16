@@ -74,7 +74,7 @@ def get_activities(limit=None, details=False):
     def get_linestring(polyline):
         if len(polyline)>=2:
             lnglat = [latlng[::-1] for latlng in polyline]
-            return shapely.LineString(lnglat).buffer(0.001)
+            return shapely.LineString(lnglat).buffer(0.002)
         return None
 
     activities = []
@@ -171,18 +171,27 @@ st.markdown("""
 # Carte des cols
 *Cliquez sur un parcours pour aller le voir sur Strava*
 """)
+            
+cols_with_indicator = cols.reset_index().merge(cols_matched.reset_index()[["col_id"]].drop_duplicates(), on="col_id", indicator=True, how="left")
 
 bounds = activities.total_bounds
 m = folium.Map()
 m.fit_bounds([[bounds[3], bounds[0]],[bounds[1], bounds[2]]])
+
+icon_ok = lambda: folium.features.DivIcon(html='<div style="height: 100%; width: 100%; background: limegreen; border: 2px solid #fff;" />')
+icon_ko = lambda: folium.features.DivIcon(html='<div style="height: 100%; width: 100%; background: orange; border: 2px solid #fff" />')
 
 fg = folium.FeatureGroup()
 for id, a in activities.iterrows():
     if a.polyline:
         fg.add_child(folium.PolyLine(a.polyline, popup=f"[{a.start_date}] <a href='https://www.strava.com/activities/{id}' target='_blank'>{a.name}</a>"))
     
-for id, a in cols_matched.iterrows():
+for id, a in cols_with_indicator[cols_with_indicator._merge=="left_only"].iterrows():
     if a.latlng:
-         fg.add_child(folium.Marker(location=a.latlng, tooltip=a.nom))
+         fg.add_child(folium.Marker(location=a.latlng, tooltip=a.nom, icon=icon_ko()))
+
+for id, a in cols_with_indicator[cols_with_indicator._merge=="both"].iterrows():
+    if a.latlng:
+         fg.add_child(folium.Marker(location=a.latlng, tooltip=a.nom, icon=icon_ok()))
 
 st_data = streamlit_folium.st_folium(m, feature_group_to_add=fg, use_container_width=True, returned_objects=[])
