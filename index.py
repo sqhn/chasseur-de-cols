@@ -10,6 +10,14 @@ import shapely
 from stravalib.client import Client
 import streamlit_folium
 
+st.set_page_config(
+    page_title="Chasseur de cols",
+    menu_items={
+        "Report a bug": "mailto:steven@qhn.fr",
+        "About": "Réalisé par Steven Quehan. https://www.qhn.fr",
+    }
+)
+
 st.image("chasseur_de_cols.png")
 st.write("""
 Grâce à vos données Strava, Chasseur de cols identifie tous les cols où vous êtes passé. 
@@ -32,7 +40,10 @@ def get_strava_access_token():
     st.experimental_set_query_params()
     return token
 
-strava_token = get_strava_access_token()        
+if "strava_token" not in st.session_state:
+    st.session_state["strava_token"] = activities = get_strava_access_token()
+strava_token = st.session_state["strava_token"]
+
 client.access_token = strava_token["access_token"]
 client.refresh_token = strava_token["refresh_token"]
 client.token_expires_at = strava_token["expires_at"]
@@ -123,10 +134,11 @@ def match_cols(cols, activities):
             minx, miny, maxx, maxy = geometry.bounds
             df = cols.reset_index()[["col_id", "nom", "altitude", "departement", "liencols", "geometry"]].copy()
             df = df.cx[minx:maxx, miny:maxy]
-            df["dist"] = df.distance(geometry)
-            df["activity_id"] = activity_id
-            df = df[df.dist <= dist_max]
-            cols_matched = pd.concat([cols_matched, df])
+            if len(df) > 0:
+                df["dist"] = df.distance(geometry)
+                df["activity_id"] = activity_id
+                df = df[df.dist <= dist_max]
+                cols_matched = pd.concat([cols_matched, df])
         i += 1
         progress_bar.progress(i / len(activities_buffer), text=progress_text)
     cols_matched["latlng"] = cols_matched.geometry.apply(lambda point: [point.xy[1][0], point.xy[0][0]])
@@ -137,11 +149,16 @@ def match_cols(cols, activities):
 
 col1, col2, col3 = st.columns(3)
 
-cols = get_cols(True)
-activities = get_activities()
+if "cols" not in st.session_state:
+    st.session_state["cols"] = get_cols(True)
+cols = st.session_state["cols"]
+
+if "activities" not in st.session_state:
+    st.session_state["activities"] = activities = get_activities()
+activities = st.session_state["activities"]
 
 with col1:
-    st.metric(label="Acitvités strava", value=activities.shape[0])
+    st.metric(label="Activités strava", value=activities.shape[0])
 
 if "cols_matched" not in st.session_state:
     st.session_state["cols_matched"] = match_cols(cols, activities)
@@ -152,7 +169,8 @@ with col2:
     st.metric(label="Cols passés", value=cols_matched.col_id.nunique())
 
 st.markdown("# Nombre de cols passés par an")
-st.bar_chart(data=cols_matched.groupby("start_year").size(), height=250)
+
+st.bar_chart(data=cols_matched.groupby("start_year").agg({"activity_id": "size"}).reset_index().rename(columns={"start_year": "Année", "activity_id": "Cols"}), x="Année", y="Cols", height=250)
 
 displayed_cols = cols_matched \
     .groupby("col_id") \
@@ -177,13 +195,14 @@ bounds = activities.total_bounds
 m = folium.Map()
 m.fit_bounds([[bounds[3], bounds[0]],[bounds[1], bounds[2]]])
 
+fg = folium.FeatureGroup()
 for id, a in activities.iterrows():
     if a.polyline:
-        folium.PolyLine(a.polyline).add_to(m)
+        fg.add_child(folium.PolyLine(a.polyline))
     
 df = [[point.xy[1][0], point.xy[0][0]] for point in cols_matched.geometry]
 for id, a in cols_matched.iterrows():
     if a.latlng:
-         folium.Marker(location=a.latlng, tooltip=a.nom).add_to(m)
+         fg.add_child(folium.Marker(location=a.latlng, tooltip=a.nom))
 
-st_data = streamlit_folium.folium_static(m)
+st_data = streamlit_folium.st_folium(m, feature_group_to_add=fg, width=None)
