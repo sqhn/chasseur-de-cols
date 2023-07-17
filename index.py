@@ -165,7 +165,8 @@ st.dataframe(displayed_cols, hide_index=True, column_config={
 })
 
 with col3:
-    st.metric(label="Le plus haut", value=f"{int(displayed_cols['Alt.'].max())}m")
+    if displayed_cols.shape[0] > 0:
+        st.metric(label="Le plus haut", value=f"{int(displayed_cols['Alt.'].fillna(0).max())}m")
 
 st.markdown("""
 # Carte des cols
