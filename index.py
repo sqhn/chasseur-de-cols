@@ -1,6 +1,10 @@
+import os
+
 import streamlit as st
 import pandas as pd
 import time
+
+from dotenv import load_dotenv
 
 import polyline
 import folium
@@ -9,6 +13,8 @@ import shapely
 
 from stravalib.client import Client
 import streamlit_folium
+
+load_dotenv()
 
 st.set_page_config(
     page_title="Chasseur de cols",
@@ -23,25 +29,23 @@ st.write("""
 Grâce à vos données Strava, Chasseur de cols identifie tous les cols où vous êtes passé. 
 """)
 
-strava = st.secrets["strava"]
-
 client = Client()
 
 # @st.cache_data(ttl=3600)
 def get_strava_access_token():
-    get_params = st.experimental_get_query_params()
+    get_params = st.query_params
 
     if not get_params.get("code"):
-        authorized_url = client.authorization_url(client_id=strava["client_id"], redirect_uri=strava["redirect_uri"])
+        authorized_url = client.authorization_url(client_id=os.getenv("strava_client_id"), redirect_uri=os.getenv("strava_redirect_uri"))
         st.markdown(f"<a href=\"{authorized_url}\" target=\"_blank\"><img src=\"app/static/btn_strava_connectwith_orange.png\"/></a>", unsafe_allow_html=True)
         st.stop()
 
-    token = client.exchange_code_for_token(client_id=strava["client_id"], client_secret=strava["client_secret"], code=get_params["code"])
-    st.experimental_set_query_params()
+    token = client.exchange_code_for_token(client_id=os.getenv("strava_client_id"), client_secret=os.getenv("strava_client_secret"), code=get_params["code"])
+    st.query_params.clear()
     return token
 
 if "strava_token" not in st.session_state:
-    st.session_state["strava_token"] = activities = get_strava_access_token()
+    st.session_state["strava_token"] = get_strava_access_token()
 strava_token = st.session_state["strava_token"]
 
 client.access_token = strava_token["access_token"]
