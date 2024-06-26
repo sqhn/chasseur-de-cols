@@ -1,3 +1,4 @@
 .streamlit/secrets.toml
 Pipfile.lock
 .env
+.venv
